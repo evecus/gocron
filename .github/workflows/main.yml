@@ -1,4 +1,4 @@
-name: Build Gocron ARM64
+name: Build Gocron ARM64 Final
 
 on:
   workflow_dispatch: 
@@ -7,29 +7,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 克隆源码到当前根目录
+      # 1. 克隆源码
       - name: Checkout Source
         uses: actions/checkout@v4
         with:
           repository: 'ouqiang/gocron'
           ref: 'master'
-          path: '.' # 确保源码就在当前工作目录，防止找不到 Go 文件
 
-      # 2. 设置 Node.js 12 (旧项目必须用老版本 Node)
+      # 2. 设置 Node.js 12
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 12
 
-      # 3. 强制禁用 ESLint 并编译前端
+      # 3. 编译前端 (绕过 Lint)
       - name: Build Frontend
         run: |
           cd web/vue
-          # 【关键步骤】删除所有关于 eslint 的配置，防止编译报错
-          sed -i '/eslint-loader/d' build/webpack.base.conf.js
+          # 【关键修正】将 eslint-loader 替换为 babel-loader
+          # 这样既保持了 Webpack 配置对象的完整性，又跳过了该死的代码检查
+          sed -i 's/eslint-loader/babel-loader/g' build/webpack.base.conf.js
           
           npm install
-          # 忽略所有的 lint 错误，只管编译
           npm run build
           cd ../..
 
@@ -39,24 +38,22 @@ jobs:
         with:
           go-version: '1.21'
 
-      # 5. 安装 statik 静态资源打包工具
+      # 5. 安装并运行 statik
       - name: Install Statik
         run: go install github.com/rakyll/statik@latest
 
-      # 6. 打包静态资源并编译二进制
+      # 6. 打包并编译二进制
       - name: Build Binary
         run: |
           export GOOS=linux
           export GOARCH=arm64
           export CGO_ENABLED=0
-          # 将 go bin 添加到路径
           export PATH=$PATH:$(go env GOPATH)/bin
 
-          # 将前端生成的静态文件转为 Go 代码
-          # 确保 web/public 目录下已经有了 npm run build 生成的文件
+          # 生成静态资源代码 (将 web/public 目录打包)
           statik -src=web/public -dest=internal -p=statik -f
 
-          # 编译主程序 (管理后台)
+          # 编译管理后台
           go build -ldflags "-s -w" -o gocron-linux-arm64 .
 
           # 编译执行节点
@@ -64,11 +61,11 @@ jobs:
           go build -ldflags "-s -w" -o gocron-node-linux-arm64 .
           cd ..
 
-      # 7. 上传编译好的文件
+      # 7. 上传
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gocron-arm64-fixed
+          name: gocron-arm64-success
           path: |
             gocron-linux-arm64
             node/gocron-node-linux-arm64
