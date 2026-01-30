@@ -1,38 +1,52 @@
 name: Build Gocron for ARM64
 
 on:
-  workflow_dispatch: # 支持手动点击按钮触发编译
+  workflow_dispatch: # 支持在 GitHub 页面手动点击按钮触发
 
 jobs:
-  build:
+  build_arm64:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout gocron source
         uses: actions/checkout@v4
         with:
-          repository: 'ouqiang/gocron' # 指定克隆 gocron 官方源码
+          repository: 'ouqiang/gocron' # 强制拉取 gocron 官方源码
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.21' # 使用较新的 Go 版本
+          go-version: '1.21'
+          check-latest: true
 
-      - name: Build Gocron (ARM64)
+      - name: Build Binaries
         run: |
-          # 编译管理后台
+          # 1. 设置环境变量：目标 Linux, 架构 ARM64, 禁用 CGO (保证兼容性)
           export GOOS=linux
           export GOARCH=arm64
-          go build -ldflags "-s -w" -o gocron-linux-arm64 main.go
+          export CGO_ENABLED=0
           
-          # 编译执行节点
+          # 2. 下载依赖
+          go mod download
+          
+          # 3. 编译管理后台 (gocron)
+          # 使用 -ldflags 压缩体积并去掉调试信息
+          go build -ldflags "-s -w" -o gocron-linux-arm64 .
+          
+          # 4. 编译执行节点 (gocron-node)
           cd node
-          go build -ldflags "-s -w" -o gocron-node-linux-arm64 main.go
+          go build -ldflags "-s -w" -o gocron-node-linux-arm64 .
           cd ..
 
-      - name: Upload Artifacts
+      - name: Create Release Package
+        run: |
+          mkdir release
+          mv gocron-linux-arm64 release/
+          mv node/gocron-node-linux-arm64 release/
+          # 顺便把默认配置或 README 扫进去（可选）
+          cp README.md release/ || true
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gocron-arm64-binaries
-          path: |
-            gocron-linux-arm64
-            node/gocron-node-linux-arm64
+          name: gocron-arm64-static
+          path: release/
