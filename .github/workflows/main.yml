@@ -1,52 +1,67 @@
-name: Build Gocron for ARM64
+name: Build Gocron ARM64 (Full Version)
 
 on:
-  workflow_dispatch: # 支持在 GitHub 页面手动点击按钮触发
+  workflow_dispatch: # 手动触发
 
 jobs:
-  build_arm64:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout gocron source
+      # 1. 下载 gocron 源码
+      - name: Checkout Source
         uses: actions/checkout@v4
         with:
-          repository: 'ouqiang/gocron' # 强制拉取 gocron 官方源码
+          repository: 'ouqiang/gocron'
+          ref: 'master'
 
-      - name: Set up Go
+      # 2. 设置 Node.js 环境 (编译前端需要)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 12 # gocron 旧版本前端需要较低版本的 node
+
+      # 3. 编译前端 Vue 项目
+      - name: Build Frontend
+        run: |
+          cd web/vue
+          npm install
+          npm run build
+          cd ../..
+
+      # 4. 设置 Go 环境
+      - name: Setup Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
-          check-latest: true
 
-      - name: Build Binaries
+      # 5. 安装 statik (用于将网页打包进二进制文件)
+      - name: Install Statik
+        run: go install github.com/rakyll/statik@latest
+
+      # 6. 生成静态资源并编译 ARM64 二进制
+      - name: Build Binary
         run: |
-          # 1. 设置环境变量：目标 Linux, 架构 ARM64, 禁用 CGO (保证兼容性)
           export GOOS=linux
           export GOARCH=arm64
           export CGO_ENABLED=0
-          
-          # 2. 下载依赖
-          go mod download
-          
-          # 3. 编译管理后台 (gocron)
-          # 使用 -ldflags 压缩体积并去掉调试信息
+          export PATH=$PATH:$(go env GOPATH)/bin
+
+          # 生成静态资源代码
+          statik -src=web/public -dest=internal -p=statik -f
+
+          # 编译主程序 (管理后台)
           go build -ldflags "-s -w" -o gocron-linux-arm64 .
-          
-          # 4. 编译执行节点 (gocron-node)
+
+          # 编译节点程序 (执行器)
           cd node
           go build -ldflags "-s -w" -o gocron-node-linux-arm64 .
           cd ..
 
-      - name: Create Release Package
-        run: |
-          mkdir release
-          mv gocron-linux-arm64 release/
-          mv node/gocron-node-linux-arm64 release/
-          # 顺便把默认配置或 README 扫进去（可选）
-          cp README.md release/ || true
-
+      # 7. 打包并上传
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gocron-arm64-static
-          path: release/
+          name: gocron-arm64-full
+          path: |
+            gocron-linux-arm64
+            node/gocron-node-linux-arm64
