@@ -1,0 +1,38 @@
+name: Build Gocron for ARM64
+
+on:
+  workflow_dispatch: # 支持手动点击按钮触发编译
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: 'ouqiang/gocron' # 指定克隆 gocron 官方源码
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21' # 使用较新的 Go 版本
+
+      - name: Build Gocron (ARM64)
+        run: |
+          # 编译管理后台
+          export GOOS=linux
+          export GOARCH=arm64
+          go build -ldflags "-s -w" -o gocron-linux-arm64 main.go
+          
+          # 编译执行节点
+          cd node
+          go build -ldflags "-s -w" -o gocron-node-linux-arm64 main.go
+          cd ..
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gocron-arm64-binaries
+          path: |
+            gocron-linux-arm64
+            node/gocron-node-linux-arm64
